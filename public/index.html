@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Live Dispatch Board — hardenwallace.dev</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="status-bar">
+    <span class="node">DISPATCH-01 / ONLINE</span>
+    <span>Active: <strong id="active-count">0</strong></span>
+    <span>Available Units: <strong id="available-count">0</strong></span>
+    <button id="report-incident">Report Incident</button>
+  </header>
+  <main>
+    <section class="panel">
+      <h2>Incident Queue</h2>
+      <ul id="incident-queue"></ul>
+    </section>
+    <section class="panel">
+      <h2>Unit Status Board</h2>
+      <div id="unit-board"></div>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>
