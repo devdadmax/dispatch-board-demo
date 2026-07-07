@@ -22,6 +22,12 @@
   var linkLabelEl = linkEl ? linkEl.querySelector('.link-label') : null;
   var clockEl = document.getElementById('clock');
 
+  var detailPanel = document.getElementById('detail-panel');
+  var detailKicker = document.getElementById('detail-kicker');
+  var detailTitle = document.getElementById('detail-title');
+  var detailBody = document.getElementById('detail-body');
+  var detailClose = document.getElementById('detail-close');
+
   var PRIORITY_ORDER = { 1: 0, 2: 1, 3: 2 };
   var STATUS_LABEL = { pending: 'pending', dispatched: 'dispatched', onscene: 'on-scene', closed: 'cleared' };
   var UNIT_STATE_CLASS = { available: 'u-available', enroute: 'u-dispatched', onscene: 'u-onscene', clear: 'u-available' };
@@ -66,6 +72,7 @@
     row.dataset.testid = 'incident-row';
     row.dataset.id = inc.id;
     row.setAttribute('role', 'row');
+    row.setAttribute('tabindex', '0');
     var pri = document.createElement('span');
     pri.className = 'col-pri';
     var priTag = document.createElement('span');
@@ -184,6 +191,7 @@
     el.dataset.testid = 'unit-badge';
     el.dataset.id = u.id;
     el.setAttribute('role', 'listitem');
+    el.setAttribute('tabindex', '0');
     var top = document.createElement('div');
     top.className = 'unit-top';
     var id = document.createElement('span');
@@ -255,6 +263,287 @@
 
   var lastState = { incidents: [], units: [] };
 
+  /* ============================================================
+     DETAIL PANEL — inspector drawer for a clicked incident/unit
+     ============================================================ */
+  var inspected = null; // { kind: 'incident'|'unit', id }
+  var lastFocusEl = null;
+
+  var STAGE_ORDER = [
+    { key: 'createdAt', label: 'REPORTED' },
+    { key: 'dispatchedAt', label: 'DISPATCHED' },
+    { key: 'onSceneAt', label: 'ON SCENE' },
+    { key: 'closedAt', label: 'CLEARED' },
+  ];
+
+  function fmtClock(ts) {
+    var d = new Date(ts);
+    function p(n) { return n < 10 ? '0' + n : '' + n; }
+    return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+  }
+
+  function markInspectedEls() {
+    var rows = queueEl.querySelectorAll('.incident-row');
+    for (var i = 0; i < rows.length; i++) {
+      rows[i].classList.toggle(
+        'is-inspected',
+        !!inspected && inspected.kind === 'incident' && rows[i].getAttribute('data-id') === inspected.id,
+      );
+    }
+    var units = unitEl.querySelectorAll('.unit');
+    for (var j = 0; j < units.length; j++) {
+      units[j].classList.toggle(
+        'is-inspected',
+        !!inspected && inspected.kind === 'unit' && units[j].getAttribute('data-id') === inspected.id,
+      );
+    }
+  }
+
+  function buildIncidentDetail(inc) {
+    var callById = {};
+    lastState.incidents.forEach(function (i) { callById[i.id] = displayCall(i.id); });
+    var unitCallsign = null;
+    lastState.units.forEach(function (u) {
+      if (u.assignedIncidentId === inc.id) unitCallsign = u.callsign;
+    });
+
+    detailKicker.textContent = displayCall(inc.id);
+    detailTitle.textContent = inc.type;
+
+    var frag = document.createDocumentFragment();
+
+    var tags = document.createElement('div');
+    tags.className = 'detail-tags';
+    var pri = document.createElement('span');
+    pri.className = 'pri-tag detail-pri priority-' + inc.priority;
+    pri.textContent = 'P' + inc.priority;
+    var status = document.createElement('span');
+    var statusClass = 'status-' + (inc.status === 'closed' ? 'cleared' : inc.status);
+    status.className = 'status-tag detail-status ' + statusClass;
+    status.textContent = STATUS_LABEL[inc.status];
+    tags.append(pri, status);
+    frag.appendChild(tags);
+
+    var fields = document.createElement('dl');
+    fields.className = 'detail-fields';
+    [
+      ['TYPE', inc.type],
+      ['LOCATION', inc.location],
+      ['ELAPSED', fmtElapsed(Date.now() - inc.createdAt)],
+      ['ASSIGNED UNIT', unitCallsign || '—'],
+    ].forEach(function (pair) {
+      var dt = document.createElement('dt');
+      dt.textContent = pair[0];
+      var dd = document.createElement('dd');
+      dd.textContent = pair[1];
+      fields.append(dt, dd);
+    });
+    frag.appendChild(fields);
+
+    var timeline = document.createElement('div');
+    timeline.className = 'detail-timeline';
+    var prevTs = null;
+    STAGE_ORDER.forEach(function (stage) {
+      var ts = inc[stage.key];
+      if (!ts) return;
+      var row = document.createElement('div');
+      row.className = 'tl-row';
+      var dot = document.createElement('span');
+      dot.className = 'tl-dot';
+      var label = document.createElement('span');
+      label.className = 'tl-label';
+      label.textContent = stage.label;
+      var time = document.createElement('span');
+      time.className = 'tl-time';
+      time.textContent = fmtClock(ts);
+      row.append(dot, label, time);
+      if (prevTs !== null) {
+        var delta = document.createElement('span');
+        delta.className = 'tl-delta';
+        delta.textContent = '+' + fmtElapsed(ts - prevTs);
+        row.appendChild(delta);
+      }
+      timeline.appendChild(row);
+      prevTs = ts;
+    });
+    frag.appendChild(timeline);
+
+    detailBody.replaceChildren(frag);
+  }
+
+  function buildUnitDetail(u) {
+    var call = null;
+    var assignedInc = null;
+    if (u.assignedIncidentId) {
+      assignedInc = lastState.incidents.find(function (i) { return i.id === u.assignedIncidentId; });
+      if (assignedInc) call = displayCall(assignedInc.id);
+    }
+
+    detailKicker.textContent = 'UNIT';
+    detailTitle.textContent = u.callsign;
+
+    var frag = document.createDocumentFragment();
+
+    var tags = document.createElement('div');
+    tags.className = 'detail-tags';
+    var stateTag = document.createElement('span');
+    stateTag.className = 'unit-state-tag ' + (UNIT_STATE_CLASS[u.status] || 'u-available');
+    stateTag.textContent = UNIT_STATE_LABEL[u.status] || u.status;
+    tags.appendChild(stateTag);
+    frag.appendChild(tags);
+
+    var fields = document.createElement('dl');
+    fields.className = 'detail-fields';
+    [
+      ['CALLSIGN', u.callsign],
+      ['STATUS', UNIT_STATE_LABEL[u.status] || u.status],
+    ].forEach(function (pair) {
+      var dt = document.createElement('dt');
+      dt.textContent = pair[0];
+      var dd = document.createElement('dd');
+      dd.textContent = pair[1];
+      fields.append(dt, dd);
+    });
+    frag.appendChild(fields);
+
+    var assignment = document.createElement('div');
+    assignment.className = 'detail-assignment';
+    var head = document.createElement('div');
+    head.className = 'da-head';
+    head.textContent = 'ASSIGNMENT';
+    assignment.appendChild(head);
+    if (assignedInc) {
+      var row = document.createElement('div');
+      row.className = 'da-row';
+      var callSpan = document.createElement('span');
+      callSpan.className = 'da-call';
+      callSpan.textContent = call;
+      var typeSpan = document.createElement('span');
+      typeSpan.className = 'da-type';
+      typeSpan.textContent = assignedInc.type;
+      var locSpan = document.createElement('span');
+      locSpan.className = 'da-loc';
+      locSpan.textContent = assignedInc.location;
+      row.append(callSpan, typeSpan, locSpan);
+      assignment.appendChild(row);
+    } else {
+      var empty = document.createElement('div');
+      empty.className = 'da-empty';
+      var none = document.createElement('span');
+      none.className = 'da-none';
+      none.textContent = 'NO ACTIVE ASSIGNMENT';
+      empty.appendChild(none);
+      assignment.appendChild(empty);
+    }
+    frag.appendChild(assignment);
+
+    detailBody.replaceChildren(frag);
+  }
+
+  function buildGoneDetail(kind) {
+    detailKicker.textContent = '';
+    detailTitle.textContent = kind === 'incident' ? 'CALL CLEARED' : 'UNIT OFFLINE';
+    var wrap = document.createElement('div');
+    wrap.className = 'detail-gone';
+    var mark = document.createElement('div');
+    mark.className = 'dg-mark';
+    var title = document.createElement('div');
+    title.className = 'dg-title';
+    title.textContent = kind === 'incident' ? 'CALL CLEARED FROM BOARD' : 'UNIT OFF ROSTER';
+    var sub = document.createElement('div');
+    sub.className = 'dg-sub';
+    sub.textContent = 'This entity is no longer present on the board.';
+    wrap.append(mark, title, sub);
+    detailBody.replaceChildren(wrap);
+  }
+
+  function renderDetail() {
+    if (!inspected) return;
+    if (inspected.kind === 'incident') {
+      var inc = lastState.incidents.find(function (i) { return i.id === inspected.id; });
+      if (inc) buildIncidentDetail(inc);
+      else buildGoneDetail('incident');
+    } else {
+      var u = lastState.units.find(function (x) { return x.id === inspected.id; });
+      if (u) buildUnitDetail(u);
+      else buildGoneDetail('unit');
+    }
+  }
+
+  function openDetail(kind, id, triggerEl) {
+    var isRetarget = !!inspected;
+    inspected = { kind: kind, id: id };
+    renderDetail();
+    markInspectedEls();
+    if (!isRetarget) {
+      lastFocusEl = triggerEl || document.activeElement;
+      detailPanel.hidden = false;
+      detailPanel.classList.remove('is-open');
+      void detailPanel.offsetWidth;
+      detailPanel.classList.add('is-open');
+      detailClose.focus();
+    }
+  }
+
+  function closeDetail() {
+    if (!inspected) return;
+    inspected = null;
+    markInspectedEls();
+    detailPanel.classList.remove('is-open');
+    detailPanel.hidden = true;
+    if (lastFocusEl && document.contains(lastFocusEl)) {
+      lastFocusEl.focus();
+    } else if (reportBtn) {
+      reportBtn.focus();
+    }
+    lastFocusEl = null;
+  }
+
+  function toggleDetail(kind, id, triggerEl) {
+    if (inspected && inspected.kind === kind && inspected.id === id) {
+      closeDetail();
+    } else {
+      openDetail(kind, id, triggerEl);
+    }
+  }
+
+  queueEl.addEventListener('click', function (e) {
+    var row = e.target.closest('.incident-row');
+    if (!row) return;
+    toggleDetail('incident', row.getAttribute('data-id'), row);
+  });
+  queueEl.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    var row = e.target.closest('.incident-row');
+    if (!row) return;
+    e.preventDefault();
+    toggleDetail('incident', row.getAttribute('data-id'), row);
+  });
+
+  unitEl.addEventListener('click', function (e) {
+    var el = e.target.closest('.unit');
+    if (!el) return;
+    toggleDetail('unit', el.getAttribute('data-id'), el);
+  });
+  unitEl.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    var el = e.target.closest('.unit');
+    if (!el) return;
+    e.preventDefault();
+    toggleDetail('unit', el.getAttribute('data-id'), el);
+  });
+
+  detailClose.addEventListener('click', closeDetail);
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && inspected) closeDetail();
+  });
+  document.addEventListener('pointerdown', function (e) {
+    if (!inspected || detailPanel.hidden) return;
+    if (detailPanel.contains(e.target)) return;
+    if (e.target.closest('.incident-row') || e.target.closest('.unit')) return;
+    closeDetail();
+  });
+
   function render(boardState) {
     lastState = boardState;
     var now = Date.now();
@@ -267,6 +556,9 @@
     setCount(availEl, avail);
     if (qCountEl) qCountEl.textContent = active;
     if (uTotalEl) uTotalEl.textContent = boardState.units.length;
+
+    markInspectedEls();
+    renderDetail();
   }
 
   function setLink(ok) {
@@ -285,6 +577,11 @@
       var cell = rows[i].querySelector('.col-time');
       cell.textContent = fmtElapsed(now - inc.createdAt);
       cell.classList.toggle('overdue', inc.status === 'pending' && now - inc.createdAt > 90000);
+    }
+    if (inspected && inspected.kind === 'incident') {
+      var elapsedDd = detailBody.querySelector('.detail-fields dd:nth-of-type(3)');
+      var inspectedInc = lastState.incidents.find(function (x) { return x.id === inspected.id; });
+      if (elapsedDd && inspectedInc) elapsedDd.textContent = fmtElapsed(now - inspectedInc.createdAt);
     }
   }
 
