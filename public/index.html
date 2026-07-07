@@ -1,28 +1,77 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0a0c10">
   <title>Live Dispatch Board — hardenwallace.dev</title>
-  <link rel="stylesheet" href="/style.css" />
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header class="status-bar">
-    <span class="node">DISPATCH-01 / ONLINE</span>
-    <span>Active: <strong id="active-count">0</strong></span>
-    <span>Available Units: <strong id="available-count">0</strong></span>
-    <button id="report-incident">Report Incident</button>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-name">DISPATCH<span class="brand-sep">//</span>CENTRAL</span>
+      <span class="brand-tag">CAD TERMINAL</span>
+    </div>
+
+    <div class="readouts">
+      <div class="readout" data-key="active">
+        <span class="readout-label">ACTIVE INCIDENTS</span>
+        <span id="active-count" class="readout-val">0</span>
+      </div>
+      <div class="readout" data-key="available">
+        <span class="readout-label">UNITS AVAILABLE</span>
+        <span id="available-count" class="readout-val">0</span>
+      </div>
+      <div class="readout readout-clock">
+        <span class="readout-label">SYS TIME</span>
+        <span id="clock" class="readout-val readout-clock-val">--:--:--</span>
+      </div>
+    </div>
+
+    <div class="topbar-actions">
+      <span class="link-status" id="link-status">
+        <span class="link-dot" aria-hidden="true"></span><span class="link-label">LINK OK</span>
+      </span>
+      <button id="report-incident" type="button" class="btn-report">Report Incident</button>
+    </div>
   </header>
-  <main>
-    <section class="panel">
-      <h2>Incident Queue</h2>
-      <ul id="incident-queue"></ul>
+
+  <main class="board">
+    <section class="panel panel-queue" aria-labelledby="queue-heading">
+      <div class="panel-head">
+        <h1 id="queue-heading">Incident Queue</h1>
+        <span class="panel-meta"><span id="queue-count">0</span> in queue &middot; sorted by priority</span>
+      </div>
+
+      <div class="qtable-head" role="row" aria-hidden="true">
+        <span class="col-pri">PRI</span>
+        <span class="col-call">CALL #</span>
+        <span class="col-time">ELAPSED</span>
+        <span class="col-type">TYPE</span>
+        <span class="col-loc">LOCATION</span>
+        <span class="col-status">STATUS</span>
+        <span class="col-unit">UNIT</span>
+      </div>
+
+      <div id="incident-queue" class="qtable-body" role="rowgroup"></div>
     </section>
-    <section class="panel">
-      <h2>Unit Status Board</h2>
-      <div id="unit-board"></div>
+
+    <section class="panel panel-units" aria-labelledby="unit-heading">
+      <div class="panel-head">
+        <h2 id="unit-heading">Unit Status Board</h2>
+        <span class="panel-meta"><span id="unit-total">0</span> units on roster</span>
+      </div>
+      <div id="unit-board" class="unit-grid" role="list"></div>
     </section>
   </main>
-  <script src="/app.js"></script>
+
+  <footer class="provenance">
+    <span class="prov-mark" aria-hidden="true"></span>
+    Synthetic data &mdash; demonstration board only. Not connected to a live CAD system.
+  </footer>
+
+  <script src="app.js"></script>
 </body>
 </html>
