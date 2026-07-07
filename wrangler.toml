@@ -1,0 +1,20 @@
+name = "dispatch-board-demo"
+main = "src/index.ts"
+compatibility_date = "2026-05-01"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+[[durable_objects.bindings]]
+name = "DISPATCH_BOARD"
+class_name = "DispatchBoard"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["DispatchBoard"]
+
+[[routes]]
+pattern = "dispatch.hardenwallace.dev"
+custom_domain = true
